@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}采集控制台{% endblock %} · Crawl Lab</title>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <header class="topbar">
+    <strong>Crawl Lab</strong>
+    <span class="muted">数据工程基线 · 采集任务编排</span>
+    {% if session.get('user') %}
+    <form class="logout" method="post" action="{{ url_for('auth.logout') }}">
+      <span>{{ session.user }}</span>
+      <button type="submit">退出</button>
+    </form>
+    {% endif %}
+  </header>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <ul class="flash">
+    {% for cat, msg in messages %}
+    <li class="{{ cat }}">{{ msg }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% endwith %}
+  <main class="content">
+    {% block body %}{% endblock %}
+  </main>
+</body>
+</html>

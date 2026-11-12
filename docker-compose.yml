@@ -1,0 +1,28 @@
+services:
+  crawl-lab:
+    build: .
+    container_name: cc-data-lab-data-13
+    ports:
+      - "5710:5590"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "5590"
+      FLASK_DEBUG: "0"
+      DATABASE_PATH: /app/instance/crawl_lab.db
+    volumes:
+      - crawl_lab_data:/app/instance
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5590/login', timeout=5)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  crawl_lab_data:

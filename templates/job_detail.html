@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}任务 {{ job.id }}{% endblock %}
+{% block body %}
+<p><a href="{{ url_for('jobs.list_jobs') }}">← 返回列表</a></p>
+<section class="card">
+  <h1>{{ job.name }}</h1>
+  <p>种子 <code>{{ job.seed_path }}</code> · 状态 <span class="tag {{ job.status }}">{{ job.status }}</span></p>
+  {% if job.status == 'draft' %}
+  <form method="post" action="{{ url_for('jobs.run_job_view', job_id=job.id) }}">
+    <button type="submit">运行采集（同步）</button>
+  </form>
+  {% elif job.status == 'done' %}
+  <p class="muted">已完成于 {{ job.finished_at or '—' }}</p>
+  {% endif %}
+</section>
+<section class="card">
+  <h2>落库记录</h2>
+  <table>
+    <thead><tr><th>item_key</th><th>标题</th><th>时间</th></tr></thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td><code>{{ r.item_key }}</code></td>
+        <td>{{ r.title }}</td>
+        <td>{{ r.fetched_at }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="muted">尚无记录</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

@@ -33,3 +33,24 @@ code { font-size: 0.85em; }
 .flash .error { color: var(--err); }
 .grid-form { display: grid; gap: 0.75rem; grid-template-columns: 1fr 1fr auto; align-items: end; }
 @media (max-width: 720px) { .grid-form { grid-template-columns: 1fr; } }
+
+/* ---- 核齐卡片：应附 / 多附 / 未齐 / 已齐 分开展示 ---- */
+.policy-name { color: #7db4ff; }
+.inline-form { display: flex; gap: 0.75rem; align-items: end; flex-wrap: wrap; margin-bottom: 0.75rem; }
+.inline-form label { margin-bottom: 0; }
+.radio-line { display: flex; gap: 0.4rem; align-items: center; }
+button.secondary { background: #3a4556; border-color: #3a4556; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+.state-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+@media (max-width: 720px) { .state-grid { grid-template-columns: 1fr; } }
+.state-box { border: 1px solid #2a3545; border-radius: 6px; padding: 0.75rem 1rem; background: #141c29; }
+.state-box h3 { margin: 0 0 0.35rem 0; font-size: 1rem; }
+.state-box ul { margin: 0.35rem 0 0; padding-left: 1.1rem; font-size: 0.9rem; }
+.state-required { border-left: 4px solid var(--accent); }
+.state-extra { border-left: 4px solid #e0a458; }
+.state-incomplete { border-left: 4px solid var(--err); }
+.state-complete { border-left: 4px solid #445; }
+.state-complete.on { border-left-color: var(--ok); background: #16302a; }
+.state-complete.on .ok { color: #9fe0c0; font-weight: 600; }
+.locked-form { opacity: 0.6; }
+details summary { cursor: pointer; }

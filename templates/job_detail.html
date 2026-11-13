@@ -4,17 +4,213 @@
 <p><a href="{{ url_for('jobs.list_jobs') }}">← 返回列表</a></p>
 <section class="card">
   <h1>{{ job.name }}</h1>
-  <p>种子 <code>{{ job.seed_path }}</code> · 状态 <span class="tag {{ job.status }}">{{ job.status }}</span></p>
+  <p>种子 <code>{{ job.seed_path }}</code> · 采集状态
+    <span class="tag {{ job.status }}">{{ job.status }}</span></p>
   {% if job.status == 'draft' %}
   <form method="post" action="{{ url_for('jobs.run_job_view', job_id=job.id) }}">
     <button type="submit">运行采集（同步）</button>
   </form>
   {% elif job.status == 'done' %}
-  <p class="muted">已完成于 {{ job.finished_at or '—' }}</p>
+  <p class="muted">采集已收束于 {{ job.finished_at or '—' }}，附页库解除锁写</p>
+  {% else %}
+  <p class="muted">采集未收束，附页库锁写中</p>
   {% endif %}
 </section>
+
+{# ---------------- 核齐口径（当日只能选一种，不能改口） ---------------- #}
 <section class="card">
-  <h2>落库记录</h2>
+  <h2>当日核齐口径</h2>
+  {% if card.policy_name %}
+  <p>今日口径：<strong class="policy-name">{{ card.policy_name }}</strong>
+     <code>{{ card.policy }}</code>（当日不能改口）</p>
+  {% else %}
+  <p class="muted">今日尚未锁定口径，请选择一种并锁定（锁定后当日不能改口）：</p>
+  <form class="inline-form" method="post"
+        action="{{ url_for('reconcile.lock_policy', job_id=job.id) }}">
+    {% for p in policies %}
+    <label class="radio-line">
+      <input type="radio" name="policy" value="{{ p }}" required />
+      {{ policy_names[p] }} <code>{{ p }}</code>
+    </label>
+    {% endfor %}
+    <button type="submit">锁定当日口径</button>
+  </form>
+  {% endif %}
+  <details class="muted">
+    <summary>口径说明（写死在后台的算法选项）</summary>
+    <ul>
+      <li><b>打开核齐瞬间快照口径 <code>snapshot</code></b>：以打开核齐瞬间的附页库/账册条数快照为准；提交时条数若变了，整笔失败并写明「条数变了」。</li>
+      <li><b>提交瞬间最新条数口径 <code>latest</code></b>：以提交瞬间最新条数为准；打开核齐之后又有写入，必须重新打开核齐，不许静默成功。</li>
+      <li>提交核齐时算法与写死选项对不上，当场挡住并提示「算法不对」。</li>
+    </ul>
+  </details>
+</section>
+
+{# ---------------- 核齐卡片：应附 / 多附 / 未齐 / 已齐 分开展示 ---------------- #}
+<section class="card">
+  <h2>核齐卡片</h2>
+  <p class="muted">当日核齐口径：
+    {% if card.policy_name %}<strong class="policy-name">{{ card.policy_name }}</strong>
+    {% else %}<span>未锁定</span>{% endif %}
+  </p>
+  <div class="state-grid">
+    <div class="state-box state-required">
+      <h3>应附</h3>
+      <p>账册应附编码（须在附页库留同名页，份数与声明一致）</p>
+      <ul>
+        {% for code in card.required_codes %}
+        <li><code>{{ code }}</code> · 实附 {{ card.page_counts.get(code, 0) }} 份</li>
+        {% else %}<li class="muted">无应附行</li>{% endfor %}
+      </ul>
+    </div>
+    <div class="state-box state-extra">
+      <h3>多附</h3>
+      <p>可不附行误建附页 / 账册外附页（多附存在时整题不得核齐）</p>
+      <ul>
+        {% for x in card.extra %}
+        <li><code>{{ x.code }}</code> · 多附 {{ x.actual }} 份</li>
+        {% else %}<li class="muted">无多附</li>{% endfor %}
+      </ul>
+    </div>
+    <div class="state-box state-incomplete">
+      <h3>未齐</h3>
+      <p>应附缺页或份数不符（少一份/多一份均算未齐）</p>
+      <ul>
+        {% for m in card.missing %}
+        <li><code>{{ m.code }}</code> · 应附 {{ m.expected }} 份 / 实有 {{ m.actual }} 份</li>
+        {% else %}<li class="muted">无未齐项</li>{% endfor %}
+      </ul>
+    </div>
+    <div class="state-box state-complete {{ 'on' if card.is_complete else '' }}">
+      <h3>已齐</h3>
+      {% if card.is_complete %}
+      <p class="ok">已齐 · 最近核齐会话 #{{ card.latest_submitted.id }}
+        （{{ policy_names[card.latest_submitted.policy] }}）</p>
+      <p class="muted">若再写入应附行，卡片自行回到未齐，旧已齐不再算完成</p>
+      {% else %}
+      <p class="muted">尚未核齐（或已齐后数据又发生变化）</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+{# ---------------- 打开 / 提交核齐 ---------------- #}
+<section class="card">
+  <h2>核齐动作</h2>
+  {% if card.open_session %}
+  <p>存在打开中的核齐会话
+    <strong>#{{ card.open_session.id }}</strong>，口径
+    <strong>{{ policy_names[card.open_session.policy] }}</strong>，
+    打开时间 {{ card.open_session.opened_at }}。</p>
+  <form class="inline-form" method="post"
+        action="{{ url_for('reconcile.submit_session', job_id=job.id, session_id=card.open_session.id) }}">
+    <label>提交算法（须与当日写死口径一致，否则当场挡住）
+      <select name="algorithm" required>
+        {% for p in policies %}
+        <option value="{{ p }}">{{ policy_names[p] }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">提交核齐</button>
+  </form>
+  <form class="inline-form" method="post"
+        action="{{ url_for('reconcile.close_session', job_id=job.id, session_id=card.open_session.id) }}">
+    <button type="submit" class="secondary">关闭核齐会话（重新打开）</button>
+  </form>
+  {% else %}
+  <form class="inline-form" method="post"
+        action="{{ url_for('reconcile.open_session', job_id=job.id) }}">
+    <button type="submit"
+      {% if not card.policy %}disabled title="请先锁定当日口径"{% endif %}>
+      打开核齐（按当日口径拍条数快照）
+    </button>
+  </form>
+  {% endif %}
+</section>
+
+{# ---------------- 目录声明 ---------------- #}
+<section class="card">
+  <h2>目录声明（编码 → 应附份数 / 附页模板名）</h2>
+  <table>
+    <thead><tr><th>编码</th><th>附页模板名</th><th>应附份数</th></tr></thead>
+    <tbody>
+      {% for d in declarations %}
+      <tr><td><code>{{ d.code }}</code></td><td>{{ d.template_name }}</td><td>{{ d.required_copies }}</td></tr>
+      {% else %}<tr><td colspan="3" class="muted">暂无声明</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <form class="grid-form" method="post"
+        action="{{ url_for('reconcile.upsert_declaration', job_id=job.id) }}">
+    <label>编码 <input name="code" placeholder="如 A-001" required /></label>
+    <label>附页模板名 <input name="template_name" placeholder="如 A-001-标准附页模板" required /></label>
+    <label>应附份数 <input name="required_copies" type="number" min="1" value="1" required /></label>
+    <button type="submit">保存声明</button>
+  </form>
+</section>
+
+{# ---------------- 账册 ---------------- #}
+<section class="card">
+  <h2>账册（应附 / 可不附）</h2>
+  <table>
+    <thead><tr><th>编码</th><th>说明</th><th>附页要求</th></tr></thead>
+    <tbody>
+      {% for r in ledger_rows %}
+      <tr>
+        <td><code>{{ r.code }}</code></td>
+        <td>{{ r.label or '—' }}</td>
+        <td><span class="tag {{ 'done' if r.required else 'draft' }}">{{ '应附' if r.required else '可不附' }}</span></td>
+      </tr>
+      {% else %}<tr><td colspan="3" class="muted">账册尚无行</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <form class="grid-form" method="post"
+        action="{{ url_for('reconcile.add_ledger', job_id=job.id) }}">
+    <label>编码 <input name="code" placeholder="如 A-001" required /></label>
+    <label>说明 <input name="label" placeholder="可选" /></label>
+    <label>附页要求
+      <select name="required">
+        <option value="1">应附</option>
+        <option value="0">可不附</option>
+      </select>
+    </label>
+    <button type="submit">写入账册行</button>
+  </form>
+</section>
+
+{# ---------------- 附页库（独立库页，不是行内备注） ---------------- #}
+<section class="card">
+  <h2>附页库</h2>
+  {% if job.status != 'done' %}
+  <p class="flash error">采集未收束，附页库锁写：运行采集并收束后方可建附页。</p>
+  {% endif %}
+  <table>
+    <thead><tr><th>同名页（编码）</th><th>份序</th><th>操作员</th><th>写入时间</th></tr></thead>
+    <tbody>
+      {% for a in attachments %}
+      <tr>
+        <td><code>{{ a.page_name }}</code></td>
+        <td>第 {{ a.seq }} 份</td>
+        <td>{{ a.operator }}</td>
+        <td>{{ a.created_at }}</td>
+      </tr>
+      {% else %}<tr><td colspan="4" class="muted">附页库为空</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <form class="grid-form{% if job.status != 'done' %} locked-form{% endif %}" method="post"
+        action="{{ url_for('reconcile.add_attachment', job_id=job.id) }}">
+    <label>附页名（编码，须与目录/账册同名）
+      <input name="page_name" placeholder="如 A-001" required
+        {% if job.status != 'done' %}disabled{% endif %} />
+    </label>
+    <label>操作员 <input name="operator" placeholder="操作员账号" required
+      {% if job.status != 'done' %}disabled{% endif %} />
+    </label>
+    <button type="submit" {% if job.status != 'done' %}disabled{% endif %}>建附页入附页库</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>落库记录（采集结果）</h2>
   <table>
     <thead><tr><th>item_key</th><th>标题</th><th>时间</th></tr></thead>
     <tbody>

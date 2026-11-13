@@ -3,6 +3,12 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from app.db import get_db
 from app.routes.auth import login_required
 from app.services.mock_catalog import CATALOGS
+from app.services.reconcile import (
+    POLICIES,
+    POLICY_NAMES,
+    card_state,
+    seed_declarations_for_job,
+)
 from app.services.runner import run_job
 
 bp = Blueprint("jobs", __name__)
@@ -41,12 +47,14 @@ def create_job():
         flash("种子路径必须是已注册的 mock 目录", "error")
         return redirect(url_for("jobs.list_jobs"))
     db = get_db()
-    db.execute(
+    cur = db.execute(
         "INSERT INTO crawl_jobs (name, seed_path, status) VALUES (?, ?, 'draft')",
         (name, seed),
     )
     db.commit()
-    flash("任务已创建", "ok")
+    # 目录声明：按种子目录每个编码声明应附份数与附页模板名
+    seed_declarations_for_job(cur.lastrowid, seed)
+    flash("任务已创建，并已按种子目录生成目录声明", "ok")
     return redirect(url_for("jobs.list_jobs"))
 
 
@@ -78,4 +86,27 @@ def detail(job_id: int):
         "SELECT * FROM crawl_records WHERE job_id = ? ORDER BY id",
         (job_id,),
     ).fetchall()
-    return render_template("job_detail.html", job=job, records=records)
+    declarations = db.execute(
+        "SELECT * FROM catalog_declarations WHERE job_id = ? ORDER BY code",
+        (job_id,),
+    ).fetchall()
+    ledger_rows = db.execute(
+        "SELECT * FROM ledger_rows WHERE job_id = ? ORDER BY id",
+        (job_id,),
+    ).fetchall()
+    attachments = db.execute(
+        "SELECT * FROM attachment_pages WHERE job_id = ? ORDER BY page_name, seq",
+        (job_id,),
+    ).fetchall()
+    card = card_state(job_id)
+    return render_template(
+        "job_detail.html",
+        job=job,
+        records=records,
+        declarations=declarations,
+        ledger_rows=ledger_rows,
+        attachments=attachments,
+        card=card,
+        policies=POLICIES,
+        policy_names=POLICY_NAMES,
+    )
